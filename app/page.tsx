@@ -1,101 +1,207 @@
-import Image from "next/image";
+"use client"; // Required for using React hooks in Next.js
+
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { auth, db } from "@/utils/firebaseConfig";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
+
+import AddTaskButton from "@/components/AddTaskButton";
+import AddTaskDialog from "@/components/AddTaskDialog";
+import TaskCalendarGrid from "@/components/TaskCalendarGrid";
+import { TaskItem, Task } from "@/components/TaskItem";
+import Sidebar from "@/components/Sidebar";
+import { Button } from "@/components/ui/button";
+
+import { loadTasks, saveTasks } from "@/utils/firebaseStorage";
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const [activeTab, setActiveTab] = useState("tab1");
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [dailyTasks, setDailyTasks] = useState<Task[]>([]);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
+  const router = useRouter();
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (!currentUser) {
+        router.push("/auth");
+      } else {
+        setUser(currentUser);
+        setLoading(false);
+        await fetchUserData(currentUser.uid);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [router]);
+
+  const fetchUserData = async (userId: string) => {
+    const userRef = doc(db, "users", userId);
+    const userSnap = await getDoc(userRef);
+
+    const userTasks = await loadTasks(userId);
+    setTasks(userTasks);
+  };
+
+  const updateTasks = async (newTasks: Task[]) => {
+    setTasks(newTasks);
+    if (user) {
+      await saveTasks(user.uid, newTasks);
+    }
+  };
+
+  const handleSignOut = async () => {
+    await signOut(auth);
+    router.push("/auth");
+  };
+
+  const handleAddTask = (taskText: string) => {
+    const newTask: Task = {
+      id: Date.now().toString(),
+      name: taskText,
+      checked: false,
+    };
+    updateTasks([...tasks, newTask]);
+  };
+
+  const handleToggleTask = (taskId: string) => {
+    updateTasks(
+      tasks.map((task) =>
+        task.id === taskId ? { ...task, checked: !task.checked } : task
+      )
+    );
+  };
+
+  const handleDeleteTask = (taskId: string) => {
+    updateTasks(tasks.filter((task) => task.id !== taskId));
+  };
+
+  const handleEditTask = (taskId: string, newName: string) => {
+    updateTasks(
+      tasks.map((task) =>
+        task.id === taskId ? { ...task, name: newName } : task
+      )
+    );
+  };
+
+  const toggleCollapse = () => {
+    setIsCollapsed(!isCollapsed);
+  };
+
+  if (loading)
+    return (
+      <div className="flex justify-center items-center min-h-screen text-white">
+        Loading...
+      </div>
+    );
+
+  return (
+    <div className="flex min-h-screen bg-slate-900 text-white">
+      {/* Profile Section */}
+      <div className="absolute top-4 right-4 flex items-center space-x-4">
+        {user?.photoURL && (
+          <img
+            src={user.photoURL}
+            alt="User Avatar"
+            className="w-10 h-10 rounded-full"
           />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
+        )}
+        <span className="font-semibold">{user?.displayName}</span>
+        <button
+          onClick={handleSignOut}
+          className="px-3 py-1 bg-red-500 hover:bg-red-700 rounded-md"
         >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+          Logout
+        </button>
+      </div>
+
+      {/* Sidebar */}
+      <Sidebar
+        onTabClick={setActiveTab}
+        isCollapsed={isCollapsed}
+        onToggleCollapse={toggleCollapse}
+      />
+
+      {/* Main Content */}
+      <div className="flex-1 p-8">
+        {activeTab === "tab1" && (
+          <div className="flex justify-center">
+            <div className={`max-w-3xl w-full p-4`}>
+              <h1 className="text-2xl font-bold mb-8">Tasks</h1>
+              <ul className="space-y-1">
+                {tasks
+                  .filter((task) => !task.checked)
+                  .map((task) => (
+                    <TaskItem
+                      key={task.id}
+                      task={task}
+                      onToggle={handleToggleTask}
+                      onDelete={handleDeleteTask}
+                      onEdit={handleEditTask}
+                    />
+                  ))}
+              </ul>
+              <Button
+                type="button"
+                variant="default"
+                className="bg-blue-600 hover:bg-blue-800 mt-4 mr-4 mb-4"
+                onClick={() => setIsDialogOpen(true)}
+              >
+                Add Task
+              </Button>
+              <AddTaskDialog
+                open={isDialogOpen}
+                onOpenChange={setIsDialogOpen}
+                onAddTask={handleAddTask}
+              />
+
+              {tasks.some((task) => task.checked) && (
+                <>
+                  <hr className="my-4 border-t border-gray-300" />
+                  <h1 className="text-2xl font-bold mb-8">Completed</h1>
+                  <ul className="space-y-1">
+                    {tasks
+                      .filter((task) => task.checked)
+                      .map((task) => (
+                        <TaskItem
+                          key={task.id}
+                          task={task}
+                          onToggle={handleToggleTask}
+                          onDelete={handleDeleteTask}
+                          onEdit={handleEditTask}
+                        />
+                      ))}
+                  </ul>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeTab === "tab2" && (
+          <div className="flex justify-center">
+            <div className="max-w-6xl w-full p-4">
+              <TaskCalendarGrid tasks={dailyTasks} />
+              <AddTaskButton
+                onClick={() => setIsDialogOpen(true)}
+                className="bg-purple-600 hover:bg-purple-700 my-4 mr-4"
+              />
+              <AddTaskDialog
+                open={isDialogOpen}
+                onOpenChange={setIsDialogOpen}
+                onAddTask={handleAddTask}
+              />
+            </div>
+          </div>
+        )}
+
+        {activeTab === "tab3" && <div>This is the content for Tab 3.</div>}
+      </div>
     </div>
   );
 }
