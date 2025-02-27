@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { auth, db } from "@/utils/firebaseConfig";
+import { auth } from "@/utils/firebaseConfig";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
+import { User } from "firebase/auth";
+// import { doc, getDoc } from "firebase/firestore";
 
 import AddTaskButton from "@/components/AddTaskButton";
 import AddTaskDialog from "@/components/AddTaskDialog";
@@ -21,7 +22,7 @@ export default function Home() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [dailyTasks, setDailyTasks] = useState<Task[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   const router = useRouter();
@@ -41,8 +42,8 @@ export default function Home() {
   }, [router]);
 
   const fetchUserData = async (userId: string) => {
-    const userRef = doc(db, "users", userId);
-    const userSnap = await getDoc(userRef);
+    // const userRef = doc(db, "users", userId);
+    // const userSnap = await getDoc(userRef);
 
     const userTasks = await loadTasks(userId);
     setTasks(userTasks);
@@ -67,6 +68,7 @@ export default function Home() {
       checked: false,
     };
     updateTasks([...tasks, newTask]);
+    setDailyTasks(dailyTasks);
   };
 
   const handleToggleTask = (taskId: string) => {
@@ -79,6 +81,7 @@ export default function Home() {
 
   const handleDeleteTask = (taskId: string) => {
     updateTasks(tasks.filter((task) => task.id !== taskId));
+    
   };
 
   const handleEditTask = (taskId: string, newName: string) => {
